@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using syncsptlrc.Models;
+using termlrc.Models;
 
-namespace syncsptlrc.Views
+namespace termlrc.Views
 {
     public interface IMainView
     {

@@ -8,9 +8,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using syncsptlrc.Models;
+using termlrc.Models;
 
-namespace syncsptlrc.Services
+namespace termlrc.Services
 {
 
 
@@ -233,7 +233,7 @@ public class LyricsService
             
             using (var request = new HttpRequestMessage(HttpMethod.Get, searchUrl))
             {
-                request.Headers.Add("User-Agent", "syncsptlrc v1.0");
+                request.Headers.Add("User-Agent", "termlrc v1.0");
                 var response = _httpClient.Send(request);
                 
                 if (response.IsSuccessStatusCode)

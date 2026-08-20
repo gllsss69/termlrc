@@ -1,29 +1,37 @@
-# syncsptlrc
+# termlrc
 
 > ⚠️ **Note:** This project is currently in active development (Work In Progress). It is not the final version, and features, UI, or stability may change as development continues.
 
-**syncsptlrc** is a stylish, terminal-based synchronized lyrics viewer for Spotify on Linux. It tracks the currently playing song in Spotify using `playerctl`, fetches synchronized lyrics from popular APIs (Musixmatch, LRCLIB), and renders them in beautiful ASCII art using `Figgle`.
+**termlrc** is a stylish, terminal-based synchronized lyrics viewer that works with **any media player** on **Linux** and **Windows**. It detects the currently playing song, fetches synchronized lyrics from popular APIs (Musixmatch, LRCLIB), and renders them in beautiful ASCII art using `Figgle`.
 
 ## ✨ Features
 
+- **Cross-Platform**: Works natively on both Linux and Windows — no extra configuration required.
+- **Universal Player Support**: Detects the currently playing song from Spotify, VLC, Rhythmbox, browser media, and any other media player that reports to the system.
 - **Synced Lyrics in ASCII**: Experience your music like never before with dynamic, terminal-based ASCII art lyrics.
 - **Cyrillic Support**: Automatically transliterates Ukrainian, Russian, and other Cyrillic text into Latin characters on the fly, ensuring all lyrics render flawlessly in ASCII fonts.
-- **Word-by-word Mode**: Watch the lyrics appear one word at a time based on time interpolation for maximum synchronization.
+- **Word-by-word Mode**: Words appear one at a time with character-length-weighted timing — longer words stay on screen proportionally longer for natural synchronization.
 - **Multiple Lyric Sources**: Automatically searches Musixmatch and LRCLIB to find the most accurate synced lyrics.
 - **Real-time Customization**: Change ASCII fonts, text colors, HUD visibility, and Word-by-word mode on the fly using keyboard hotkeys.
-- **Smart Playback Tracking**: Seamlessly handles pausing, resuming, ad breaks, and track changes via `playerctl`.
+- **Smart Playback Tracking**: Seamlessly handles pausing, resuming, ad breaks, and track changes.
 
 ## 📋 Prerequisites
 
-To run this application, you must have the following installed on your system:
+### All Platforms
 - **.NET SDK 10.0** (or later)
-- **`playerctl`**: A command-line utility for controlling media players. Required to communicate with Spotify.
-- **Spotify Desktop Client**: Needs to be running and playing music.
+
+### Linux
+- **`playerctl`**: A command-line utility for controlling media players. Install via your package manager (e.g. `sudo apt install playerctl`).
+- Any **MPRIS-compatible media player** (Spotify, VLC, Rhythmbox, Audacious, etc.) must be running.
+
+### Windows
+- **Windows 10** (Build 17763 / version 1809) or later.
+- Any media player that reports to the **Windows System Media Transport Controls** (most modern players do — Spotify, web browsers, Groove Music, foobar2000, etc.).
 
 ## 🚀 Getting Started
 
 1. Clone or download the repository to your local machine.
-2. Ensure you have Spotify open and playing music.
+2. Ensure you have a media player open and playing music.
 3. Open a terminal in the project directory and run:
 
 ```bash
@@ -43,5 +51,5 @@ While the application is running, you can use the following keys to customize yo
 
 - **C# / .NET 10.0**
 - [**Figgle**](https://github.com/drewnoakes/figgle) - For generating ASCII art from text.
-- **playerctl** - For retrieving metadata and playback status from Spotify.
+- **playerctl** (Linux) / **Windows SMTC API** (Windows) - For retrieving metadata and playback status.
 - **Musixmatch & LRCLIB APIs** - For fetching synced `.lrc` lyrics.

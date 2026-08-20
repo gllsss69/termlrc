@@ -2,10 +2,10 @@ using System;
 using System.Diagnostics;
 using System.IO;
 
-namespace syncsptlrc.Services
+namespace termlrc.Services
 {
 
-public class PlayerService
+public class LinuxPlayerService : IPlayerService
 {
     public string GetStatus()
     {
@@ -25,15 +25,16 @@ public class PlayerService
             ProcessStartInfo psi = new ProcessStartInfo
             {
                 FileName = "playerctl",
-                Arguments = "--player=spotify,%any metadata --format \"{{ artist }} - {{ title }}\"",
+                Arguments = "--player=%any metadata --format \"{{ artist }} - {{ title }}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
 
-            using (Process process = Process.Start(psi))
+            using (Process? process = Process.Start(psi))
             {
+                if (process == null) return "The music isn't playing.";
                 using (StreamReader reader = process.StandardOutput)
                 {
                     string result = reader.ReadToEnd().Trim();
@@ -54,15 +55,16 @@ public class PlayerService
             ProcessStartInfo psi = new ProcessStartInfo
             {
                 FileName = "playerctl",
-                Arguments = "--player=spotify,%any position",
+                Arguments = "--player=%any position",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
 
-            using (Process process = Process.Start(psi))
+            using (Process? process = Process.Start(psi))
             {
+                if (process == null) return 0;
                 using (StreamReader reader = process.StandardOutput)
                 {
                     string result = reader.ReadToEnd().Trim().Replace(',', '.');
@@ -152,15 +154,16 @@ public class PlayerService
             ProcessStartInfo psi = new ProcessStartInfo
             {
                 FileName = "playerctl",
-                Arguments = $"--player=spotify,%any {arguments}",
+                Arguments = $"--player=%any {arguments}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
 
-            using (Process process = Process.Start(psi))
+            using (Process? process = Process.Start(psi))
             {
+                if (process == null) return null;
                 using (StreamReader reader = process.StandardOutput)
                 {
                     string result = reader.ReadToEnd().Trim();

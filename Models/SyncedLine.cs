@@ -1,4 +1,4 @@
-namespace syncsptlrc.Models
+namespace termlrc.Models
 {
     public class SyncedLine
     {

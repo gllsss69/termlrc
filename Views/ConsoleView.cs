@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using syncsptlrc.Models;
+using termlrc.Models;
 
-namespace syncsptlrc.Views
+namespace termlrc.Views
 {
     public class ConsoleView : IMainView
     {

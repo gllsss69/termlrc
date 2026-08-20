@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace syncsptlrc.Models
+namespace termlrc.Models
 {
     public class PlaybackState
     {

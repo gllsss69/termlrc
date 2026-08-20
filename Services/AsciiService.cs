@@ -4,20 +4,18 @@ using System.IO;
 using Figgle;
 using Figgle.Fonts;
 
-namespace syncsptlrc.Services
+namespace termlrc.Services
 {
 
 public class AsciiService
 {
     public readonly string Logo = """
-                                 _   _          
-                                | | | |         
-  ___ _   _ _ __   ___ ___ _ __ | |_| |_ __ ___ 
- / __| | | | '_ \ / __/ __| '_ \| __| | '__/ __|
- \__ \ |_| | | | | (__\__ \ |_) | |_| | | | (__ 
- |___/\__, |_| |_|\___|___/ .__/ \__|_|_|  \___|
-       __/ |              | |                   
-      |___/               |_|                   
+  _                      _          
+ | |                    | |         
+ | |_ ___ _ __ _ __ ___ | |_ __ ___ 
+ | __/ _ \ '__| '_ ` _ \| | '__/ __|
+ | ||  __/ |  | | | | | | | | | (__ 
+  \__\___|_|  |_| |_| |_|_|_|  \___|
 """;
 
     private readonly (string name, Figgle.FiggleFont font)[] _fonts =

@@ -2,22 +2,22 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
-using syncsptlrc.Models;
-using syncsptlrc.Services;
-using syncsptlrc.Views;
+using termlrc.Models;
+using termlrc.Services;
+using termlrc.Views;
 
-namespace syncsptlrc.Presenters
+namespace termlrc.Presenters
 {
     public class MainPresenter
     {
         private readonly IMainView _view;
-        private readonly PlayerService _player;
+        private readonly IPlayerService _player;
         private readonly AsciiService _ascii;
         private readonly LyricsService _lyrics;
         private readonly PlaybackState _state;
         private bool _idleDrawn;
 
-        public MainPresenter(IMainView view, PlayerService player, AsciiService ascii, LyricsService lyrics)
+        public MainPresenter(IMainView view, IPlayerService player, AsciiService ascii, LyricsService lyrics)
         {
             _view = view;
             _player = player;
@@ -218,7 +218,7 @@ namespace syncsptlrc.Presenters
                         activeText = "~ ~ ~";
                     }
 
-                    // Word-by-word mode: pick one word based on time interpolation
+                    // Word-by-word mode: pick one word based on character-length-weighted timing
                     if (_state.WordByWordMode && activeText != "~ ~ ~")
                     {
                         string[] words = activeText.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -229,12 +229,33 @@ namespace syncsptlrc.Presenters
                                 ? _state.SyncedLyrics[activeIndex + 1].TimeInSeconds
                                 : lineStart + 5.0;
 
-                            double lineDuration = lineEnd - lineStart;
-                            double elapsed = currentPosition - lineStart;
-                            double progress = Math.Max(0, Math.Min(1, elapsed / lineDuration));
+                            double rawDuration = lineEnd - lineStart;
 
-                            int wordIndex = (int)(progress * words.Length);
-                            if (wordIndex >= words.Length) wordIndex = words.Length - 1;
+                            // Reserve a tail gap so words don't stretch into the pause
+                            // between lyric lines. Use 30% of the gap or 0.8s max.
+                            double tailGap = Math.Min(rawDuration * 0.30, 0.8);
+                            double activeDuration = Math.Max(0.5, rawDuration - tailGap);
+
+                            double elapsed = currentPosition - lineStart;
+                            double progress = Math.Max(0, Math.Min(1, elapsed / activeDuration));
+
+                            // Weight each word by its character count so longer words
+                            // stay on screen proportionally longer.
+                            int totalChars = 0;
+                            foreach (var w in words) totalChars += Math.Max(w.Length, 1);
+
+                            int wordIndex = 0;
+                            double cumulative = 0;
+                            for (int wi = 0; wi < words.Length; wi++)
+                            {
+                                cumulative += (double)Math.Max(words[wi].Length, 1) / totalChars;
+                                if (progress < cumulative)
+                                {
+                                    wordIndex = wi;
+                                    break;
+                                }
+                                wordIndex = wi;
+                            }
 
                             activeText = words[wordIndex];
                         }

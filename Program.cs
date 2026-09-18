@@ -1,12 +1,13 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using termlrc.Services;
 using termlrc.Views;
 using termlrc.Presenters;
 
 class Program
 {
-    static void Main(string[] args)
+    static async Task Main(string[] args)
     {
         IPlayerService player;
 
@@ -24,7 +25,7 @@ class Program
         var view = new ConsoleView();
 
         var presenter = new MainPresenter(view, player, ascii, lyrics);
-        presenter.Run();
+        await presenter.RunAsync();
     }
 
     /// <summary>

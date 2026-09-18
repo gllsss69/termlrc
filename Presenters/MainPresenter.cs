@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using termlrc.Models;
 using termlrc.Services;
 using termlrc.Views;
@@ -16,6 +17,7 @@ namespace termlrc.Presenters
         private readonly LyricsService _lyrics;
         private readonly PlaybackState _state;
         private bool _idleDrawn;
+        private string _lastRenderState = string.Empty;
 
         public MainPresenter(IMainView view, IPlayerService player, AsciiService ascii, LyricsService lyrics)
         {
@@ -26,10 +28,13 @@ namespace termlrc.Presenters
             _state = new PlaybackState();
         }
 
-        public void Run()
+        public async Task RunAsync()
         {
             Console.OutputEncoding = System.Text.Encoding.UTF8;
             Console.CursorVisible = false;
+
+            CancellationTokenSource? searchCts = null;
+            Task? searchTask = null;
 
             while (true)
             {
@@ -41,24 +46,24 @@ namespace termlrc.Presenters
                     {
                         case ConsoleKey.F:
                             _ascii.NextFont();
-                            _view.Clear();
+                            ForceRedraw();
                             break;
                         case ConsoleKey.C:
                             _state.ColorIndex = (_state.ColorIndex + 1) % _state.Colors.Length;
                             break;
                         case ConsoleKey.H:
                             _state.HudMode = (_state.HudMode + 1) % 3;
-                            _view.Clear();
+                            ForceRedraw();
                             break;
                         case ConsoleKey.W:
                             _state.WordByWordMode = !_state.WordByWordMode;
-                            _view.Clear();
+                            ForceRedraw();
                             break;
                     }
                 }
 
-                // 2. Poll player
-                bool shouldPoll = (DateTime.UtcNow - _state.LastPollTime).TotalMilliseconds >= 1000;
+                // 2. Poll player (metadata every 2s to reduce process spawns)
+                bool shouldPoll = (DateTime.UtcNow - _state.LastPollTime).TotalMilliseconds >= 2000;
                 if (shouldPoll)
                 {
                     _state.LastPollTime = DateTime.UtcNow;
@@ -93,14 +98,15 @@ namespace termlrc.Presenters
                         _view.DrawIdleMessage(_ascii.Logo);
                         _state.LastTrack = string.Empty;
                         _idleDrawn = true;
+                        _lastRenderState = "IDLE";
                     }
-                    Thread.Sleep(300);
+                    await Task.Delay(300);
                     continue;
                 }
 
                 _idleDrawn = false;
 
-                // 3. Ad playing - skip lyrics search
+                // 3. Ad playing
                 if (_state.IsAd)
                 {
                     if (_state.LastTrack != "__ad__")
@@ -109,92 +115,50 @@ namespace termlrc.Presenters
                         _state.SyncedLyrics.Clear();
                         _state.LastTrack = "__ad__";
                         _view.Clear();
+                        _lastRenderState = "AD_INIT";
+                        
+                        _view.SetCursorPosition(0, 0);
+                        _view.DrawAdMessage(_ascii.Logo);
                     }
-                    _view.SetCursorPosition(0, 0);
-                    _view.DrawAdMessage(_ascii.Logo);
-                    Thread.Sleep(200);
+                    await Task.Delay(200);
                     continue;
                 }
 
-                // 4. Track changed - fetch lyrics
+                // 4. Track changed - fetch lyrics asynchronously
                 if (_state.CurrentTrack != _state.LastTrack && 
                     _state.CurrentTrack != "The music isn't playing." && 
                     _state.CurrentTrack != "Failed to retrieve the song")
                 {
-                    _view.PrepareSearchScreen(_ascii.Logo, _state.CurrentTrack);
-
+                    _state.LastTrack = _state.CurrentTrack;
+                    
+                    searchCts?.Cancel();
+                    searchCts = new CancellationTokenSource();
+                    
                     string[] trackParts = _state.CurrentTrack.Split(new string[] { " - " }, StringSplitOptions.None);
                     _state.CurrentArtist = trackParts.Length >= 2 ? trackParts[0] : "";
                     _state.CurrentTitle = trackParts.Length >= 2 ? trackParts[1] : _state.CurrentTrack;
 
                     _state.IsSynced = false;
                     _state.SyncedLyrics.Clear();
+                    _state.ScrollModeInfo = "Searching...";
 
-                    string? syncedText = null;
-
-                    // Search Musixmatch by Spotify ID
-                    string? spotifyId = _player.GetSpotifyTrackId();
-                    if (!string.IsNullOrEmpty(spotifyId))
-                    {
-                        _view.DrawSearchStep($"Spotify ID: {spotifyId}", ConsoleColor.DarkGray);
-                        _view.DrawSearchStep("Musixmatch (Spotify ID)...", ConsoleColor.DarkGray);
-                        syncedText = _lyrics.GetLyricsFromMusixmatchBySpotifyId(spotifyId);
-
-                        if (!string.IsNullOrEmpty(syncedText) && syncedText.Contains("["))
-                        {
-                            var parsed = _lyrics.ParseLrc(syncedText);
-                            if (parsed.Count > 0)
-                            {
-                                _state.SyncedLyrics = parsed;
-                                _state.IsSynced = true;
-                                _state.ScrollModeInfo = "Musixmatch/Spotify ID";
-                            }
-                        }
-                    }
-
-                    // Search Musixmatch by Artist & Title
-                    if (!_state.IsSynced)
-                    {
-                        _view.DrawSearchStep("Musixmatch (search)...", ConsoleColor.DarkGray);
-                        syncedText = _lyrics.GetLyricsFromMusixmatch(_state.CurrentArtist, _state.CurrentTitle);
-
-                        if (!string.IsNullOrEmpty(syncedText) && syncedText.Contains("["))
-                        {
-                            var parsed = _lyrics.ParseLrc(syncedText);
-                            if (parsed.Count > 0)
-                            {
-                                _state.SyncedLyrics = parsed;
-                                _state.IsSynced = true;
-                                _state.ScrollModeInfo = "Musixmatch";
-                            }
-                        }
-                    }
-
-                    // Search LRCLIB by Artist & Title
-                    if (!_state.IsSynced)
-                    {
-                        _view.DrawSearchStep("LRCLIB (search)...", ConsoleColor.DarkGray);
-                        syncedText = _lyrics.GetLyricsFromLrcLib(_state.CurrentArtist, _state.CurrentTitle);
-
-                        if (!string.IsNullOrEmpty(syncedText) && syncedText.Contains("["))
-                        {
-                            var parsed = _lyrics.ParseLrc(syncedText);
-                            if (parsed.Count > 0)
-                            {
-                                _state.SyncedLyrics = parsed;
-                                _state.IsSynced = true;
-                                _state.ScrollModeInfo = "LRCLIB";
-                            }
-                        }
-                    }
-
-                    _state.LastTrack = _state.CurrentTrack;
-                    _view.Clear();
+                    _view.PrepareSearchScreen(_ascii.Logo, _state.CurrentTrack);
+                    _lastRenderState = string.Empty;
+                    
+                    string spotifyId = _player.GetSpotifyTrackId() ?? "";
+                    
+                    searchTask = PerformSearchAsync(spotifyId, _state.CurrentArtist, _state.CurrentTitle, searchCts.Token);
                 }
 
-                // 4. Render active screen
-                _view.SetCursorPosition(0, 0);
+                // If currently searching, don't draw lyrics yet
+                if (searchTask != null && !searchTask.IsCompleted)
+                {
+                    await Task.Delay(50);
+                    continue;
+                }
 
+                // 5. Render active screen (only if changed)
+                string activeText = "~ ~ ~";
                 if (_state.IsSynced && _state.SyncedLyrics.Count > 0)
                 {
                     double currentPosition = _state.GetCurrentPosition();
@@ -212,13 +176,13 @@ namespace termlrc.Presenters
                         }
                     }
 
-                    string activeText = _state.SyncedLyrics[activeIndex].Text;
+                    activeText = _state.SyncedLyrics[activeIndex].Text;
                     if (string.IsNullOrWhiteSpace(activeText) || activeText == "♪" || activeText == "♫")
                     {
                         activeText = "~ ~ ~";
                     }
 
-                    // Word-by-word mode: pick one word based on character-length-weighted timing
+                    // Word-by-word mode
                     if (_state.WordByWordMode && activeText != "~ ~ ~")
                     {
                         string[] words = activeText.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
@@ -230,17 +194,12 @@ namespace termlrc.Presenters
                                 : lineStart + 5.0;
 
                             double rawDuration = lineEnd - lineStart;
-
-                            // Reserve a tail gap so words don't stretch into the pause
-                            // between lyric lines. Use 30% of the gap or 0.8s max.
                             double tailGap = Math.Min(rawDuration * 0.30, 0.8);
                             double activeDuration = Math.Max(0.5, rawDuration - tailGap);
 
                             double elapsed = currentPosition - lineStart;
                             double progress = Math.Max(0, Math.Min(1, elapsed / activeDuration));
 
-                            // Weight each word by its character count so longer words
-                            // stay on screen proportionally longer.
                             int totalChars = 0;
                             foreach (var w in words) totalChars += Math.Max(w.Length, 1);
 
@@ -260,21 +219,103 @@ namespace termlrc.Presenters
                             activeText = words[wordIndex];
                         }
                     }
-
-                    int maxChars = Math.Max(10, _view.WindowWidth / 7);
-                    List<string> asciiLines = _ascii.RenderAsciiWrapped(activeText, maxChars);
-
-                    _view.DrawLyrics(asciiLines, _state);
                 }
-                else
+
+                string currentRenderState = $"{activeText}_{_view.WindowWidth}_{_view.WindowHeight}_{_state.HudMode}_{_state.ColorIndex}_{_ascii.CurrentFontName}_{_state.WordByWordMode}_{_state.IsSynced}";
+
+                if (currentRenderState != _lastRenderState)
                 {
-                    _view.DrawNoLyricsMessage(_state);
+                    _view.SetCursorPosition(0, 0);
+
+                    if (_state.IsSynced && _state.SyncedLyrics.Count > 0)
+                    {
+                        int maxChars = Math.Max(10, _view.WindowWidth / 7);
+                        List<string> asciiLines = _ascii.RenderAsciiWrapped(activeText, maxChars);
+                        _view.DrawLyrics(asciiLines, _state);
+                    }
+                    else
+                    {
+                        _view.DrawNoLyricsMessage(_state);
+                    }
+
+                    _view.DrawFooter(_state, _ascii.CurrentFontName);
+                    _lastRenderState = currentRenderState;
                 }
 
-                _view.DrawFooter(_state, _ascii.CurrentFontName);
-
-                Thread.Sleep(50);
+                await Task.Delay(50);
             }
+        }
+        
+        private void ForceRedraw()
+        {
+            _view.Clear();
+            _lastRenderState = string.Empty;
+        }
+
+        private async Task PerformSearchAsync(string spotifyId, string artist, string title, CancellationToken token)
+        {
+            string? syncedText = null;
+            
+            if (!token.IsCancellationRequested && !string.IsNullOrEmpty(spotifyId))
+            {
+                _view.DrawSearchStep($"Spotify ID: {spotifyId}", ConsoleColor.DarkGray);
+                _view.DrawSearchStep("Musixmatch (Spotify ID)...", ConsoleColor.DarkGray);
+                syncedText = await _lyrics.GetLyricsFromMusixmatchBySpotifyIdAsync(spotifyId);
+
+                if (!string.IsNullOrEmpty(syncedText) && syncedText.Contains("["))
+                {
+                    var parsed = _lyrics.ParseLrc(syncedText);
+                    if (parsed.Count > 0)
+                    {
+                        _state.SyncedLyrics = parsed;
+                        _state.IsSynced = true;
+                        _state.ScrollModeInfo = "Musixmatch/Spotify ID";
+                        ForceRedraw();
+                        return;
+                    }
+                }
+            }
+
+            if (!token.IsCancellationRequested)
+            {
+                _view.DrawSearchStep("Musixmatch (search)...", ConsoleColor.DarkGray);
+                syncedText = await _lyrics.GetLyricsFromMusixmatchAsync(artist, title);
+
+                if (!string.IsNullOrEmpty(syncedText) && syncedText.Contains("["))
+                {
+                    var parsed = _lyrics.ParseLrc(syncedText);
+                    if (parsed.Count > 0)
+                    {
+                        _state.SyncedLyrics = parsed;
+                        _state.IsSynced = true;
+                        _state.ScrollModeInfo = "Musixmatch";
+                        ForceRedraw();
+                        return;
+                    }
+                }
+            }
+
+            if (!token.IsCancellationRequested)
+            {
+                _view.DrawSearchStep("LRCLIB (search)...", ConsoleColor.DarkGray);
+                syncedText = await _lyrics.GetLyricsFromLrcLibAsync(artist, title);
+
+                if (!string.IsNullOrEmpty(syncedText) && syncedText.Contains("["))
+                {
+                    var parsed = _lyrics.ParseLrc(syncedText);
+                    if (parsed.Count > 0)
+                    {
+                        _state.SyncedLyrics = parsed;
+                        _state.IsSynced = true;
+                        _state.ScrollModeInfo = "LRCLIB";
+                        ForceRedraw();
+                        return;
+                    }
+                }
+            }
+            
+            // Search failed
+            ForceRedraw();
         }
     }
 }

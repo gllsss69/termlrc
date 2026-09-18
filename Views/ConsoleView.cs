@@ -7,11 +7,30 @@ namespace termlrc.Views
 {
     public class ConsoleView : IMainView
     {
+        private int _cachedWidth = 80;
+        private int _cachedHeight = 24;
+        private DateTime _lastDimensionCheck = DateTime.MinValue;
+
+        private void CheckDimensions()
+        {
+            if ((DateTime.UtcNow - _lastDimensionCheck).TotalMilliseconds > 1000)
+            {
+                _lastDimensionCheck = DateTime.UtcNow;
+                try
+                {
+                    _cachedWidth = Console.WindowWidth;
+                    _cachedHeight = Console.WindowHeight;
+                }
+                catch { }
+            }
+        }
+
         public int WindowWidth
         {
             get
             {
-                try { return Console.WindowWidth; } catch { return 80; }
+                CheckDimensions();
+                return _cachedWidth;
             }
         }
 
@@ -19,7 +38,8 @@ namespace termlrc.Views
         {
             get
             {
-                try { return Console.WindowHeight; } catch { return 24; }
+                CheckDimensions();
+                return _cachedHeight;
             }
         }
 

@@ -262,6 +262,8 @@ namespace termlrc.Presenters
                 _view.DrawSearchStep("Musixmatch (Spotify ID)...", ConsoleColor.DarkGray);
                 syncedText = await _lyrics.GetLyricsFromMusixmatchBySpotifyIdAsync(spotifyId);
 
+                if (token.IsCancellationRequested) return;
+
                 if (!string.IsNullOrEmpty(syncedText) && syncedText.Contains("["))
                 {
                     var parsed = _lyrics.ParseLrc(syncedText);
@@ -280,6 +282,8 @@ namespace termlrc.Presenters
             {
                 _view.DrawSearchStep("Musixmatch (search)...", ConsoleColor.DarkGray);
                 syncedText = await _lyrics.GetLyricsFromMusixmatchAsync(artist, title);
+
+                if (token.IsCancellationRequested) return;
 
                 if (!string.IsNullOrEmpty(syncedText) && syncedText.Contains("["))
                 {
@@ -300,6 +304,8 @@ namespace termlrc.Presenters
                 _view.DrawSearchStep("LRCLIB (search)...", ConsoleColor.DarkGray);
                 syncedText = await _lyrics.GetLyricsFromLrcLibAsync(artist, title);
 
+                if (token.IsCancellationRequested) return;
+
                 if (!string.IsNullOrEmpty(syncedText) && syncedText.Contains("["))
                 {
                     var parsed = _lyrics.ParseLrc(syncedText);
@@ -313,6 +319,8 @@ namespace termlrc.Presenters
                     }
                 }
             }
+            
+            if (token.IsCancellationRequested) return;
             
             // Search failed
             ForceRedraw();

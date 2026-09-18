@@ -78,6 +78,7 @@ namespace termlrc.Views
             Console.WriteLine(new string(' ', winWidth));
 
             string searchHeader = $"Searching lyrics for: {currentTrack}...";
+            if (searchHeader.Length > winWidth) searchHeader = searchHeader.Substring(0, winWidth - 3) + "...";
             int pad = Math.Max(0, (winWidth - searchHeader.Length) / 2);
             Console.ForegroundColor = ConsoleColor.White;
             Console.WriteLine((new string(' ', pad) + searchHeader).PadRight(winWidth));
@@ -266,6 +267,7 @@ namespace termlrc.Views
             
             // Draw track info
             string trackInfo = $"{state.CurrentArtist} - {state.CurrentTitle}";
+            if (trackInfo.Length > winWidth) trackInfo = trackInfo.Substring(0, winWidth - 3) + "...";
             int pad = Math.Max(0, (winWidth - trackInfo.Length) / 2);
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine((new string(' ', pad) + trackInfo).PadRight(winWidth));
@@ -276,6 +278,7 @@ namespace termlrc.Views
             {
                 string wordMode = state.WordByWordMode ? "ON" : "OFF";
                 string hudText = $"Lyrics: {state.ScrollModeInfo}  |  [F]Font: {currentFontName}  [C]Color  [H]HUD  [W]Word({wordMode})";
+                if (hudText.Length > winWidth) hudText = hudText.Substring(0, winWidth - 3) + "...";
                 int fPad2 = Math.Max(0, (winWidth - hudText.Length) / 2);
                 Console.ForegroundColor = ConsoleColor.DarkGray;
                 Console.Write((new string(' ', fPad2) + hudText).PadRight(winWidth));

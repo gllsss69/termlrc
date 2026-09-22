@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using termlrc.Models;
@@ -255,6 +254,27 @@ namespace termlrc.Presenters
         private async Task PerformSearchAsync(string spotifyId, string artist, string title, CancellationToken token)
         {
             string? syncedText = null;
+
+            if (!token.IsCancellationRequested)
+            {
+                _view.DrawSearchStep("LRCLIB...", ConsoleColor.DarkGray);
+                syncedText = await _lyrics.GetLyricsFromLrcLibAsync(artist, title);
+
+                if (token.IsCancellationRequested) return;
+
+                if (!string.IsNullOrEmpty(syncedText) && syncedText.Contains("["))
+                {
+                    var parsed = _lyrics.ParseLrc(syncedText);
+                    if (parsed.Count > 0)
+                    {
+                        _state.SyncedLyrics = parsed;
+                        _state.IsSynced = true;
+                        _state.ScrollModeInfo = "LRCLIB";
+                        ForceRedraw();
+                        return;
+                    }
+                }
+            }
             
             if (!token.IsCancellationRequested && !string.IsNullOrEmpty(spotifyId))
             {
@@ -271,7 +291,7 @@ namespace termlrc.Presenters
                     {
                         _state.SyncedLyrics = parsed;
                         _state.IsSynced = true;
-                        _state.ScrollModeInfo = "Musixmatch/Spotify ID";
+                        _state.ScrollModeInfo = "Musixmatch";
                         ForceRedraw();
                         return;
                     }
@@ -293,27 +313,6 @@ namespace termlrc.Presenters
                         _state.SyncedLyrics = parsed;
                         _state.IsSynced = true;
                         _state.ScrollModeInfo = "Musixmatch";
-                        ForceRedraw();
-                        return;
-                    }
-                }
-            }
-
-            if (!token.IsCancellationRequested)
-            {
-                _view.DrawSearchStep("LRCLIB (search)...", ConsoleColor.DarkGray);
-                syncedText = await _lyrics.GetLyricsFromLrcLibAsync(artist, title);
-
-                if (token.IsCancellationRequested) return;
-
-                if (!string.IsNullOrEmpty(syncedText) && syncedText.Contains("["))
-                {
-                    var parsed = _lyrics.ParseLrc(syncedText);
-                    if (parsed.Count > 0)
-                    {
-                        _state.SyncedLyrics = parsed;
-                        _state.IsSynced = true;
-                        _state.ScrollModeInfo = "LRCLIB";
                         ForceRedraw();
                         return;
                     }

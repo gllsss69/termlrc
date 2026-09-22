@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -50,48 +48,58 @@ namespace termlrc.Services
 
         private async Task<string?> GenerateMusixmatchTokenAsync()
         {
-            try
+            // Retry up to 3 times — sometimes the first attempt returns a dummy token
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                string timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
-                string guid = Guid.NewGuid().ToString();
-
-                var queryParams = new Dictionary<string, string>
+                try
                 {
-                    { "format", "json" },
-                    { "guid", guid },
-                    { "timestamp", timestamp },
-                    { "build_number", "2017091202" },
-                    { "lang", "en-GB" },
-                    { "app_id", "web-desktop-app-v1.0" }
-                };
+                    string timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
+                    string guid = Guid.NewGuid().ToString();
 
-                string signature = SignRequest("token.get", queryParams, timestamp);
-                queryParams["signature"] = signature;
-                queryParams["signature_protocol"] = "sha1";
-
-                string queryString = string.Join("&",
-                    queryParams.Select(kv => $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value)}"));
-
-                string url = _apiBase + "token.get?" + queryString;
-
-                string response = await _httpClient.GetStringAsync(url);
-
-                using (JsonDocument doc = JsonDocument.Parse(response))
-                {
-                    if (doc.RootElement.TryGetProperty("message", out JsonElement msg) &&
-                        msg.TryGetProperty("body", out JsonElement body) &&
-                        body.ValueKind == JsonValueKind.Object &&
-                        body.TryGetProperty("user_token", out JsonElement tokenEl))
+                    var queryParams = new Dictionary<string, string>
                     {
-                        string? token = tokenEl.GetString();
-                        if (!string.IsNullOrEmpty(token) && token != "MusixmatchUserToken")
+                        { "format", "json" },
+                        { "guid", guid },
+                        { "timestamp", timestamp },
+                        { "build_number", "2017091202" },
+                        { "lang", "en-GB" },
+                        { "app_id", "web-desktop-app-v1.0" }
+                    };
+
+                    string signature = SignRequest("token.get", queryParams, timestamp);
+                    queryParams["signature"] = signature;
+                    queryParams["signature_protocol"] = "sha1";
+
+                    string queryString = string.Join("&",
+                        queryParams.Select(kv => $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value)}"));
+
+                    string url = _apiBase + "token.get?" + queryString;
+
+                    string response = await _httpClient.GetStringAsync(url);
+
+                    using (JsonDocument doc = JsonDocument.Parse(response))
+                    {
+                        if (doc.RootElement.TryGetProperty("message", out JsonElement msg) &&
+                            msg.TryGetProperty("body", out JsonElement body) &&
+                            body.ValueKind == JsonValueKind.Object &&
+                            body.TryGetProperty("user_token", out JsonElement tokenEl))
                         {
-                            return token;
+                            string? token = tokenEl.GetString();
+                            if (!string.IsNullOrEmpty(token) &&
+                                token != "MusixmatchUserToken" &&
+                                !token.All(c => c == '0'))
+                            {
+                                return token;
+                            }
                         }
                     }
                 }
+                catch { }
+
+                // Small delay before retrying
+                if (attempt < 2)
+                    await Task.Delay(500);
             }
-            catch { }
             return null;
         }
 
@@ -122,26 +130,11 @@ namespace termlrc.Services
                 string? usertoken = await GetMusixmatchTokenAsync();
                 if (string.IsNullOrEmpty(usertoken)) return null;
 
-                string matchUrl = $"{_apiBase}matcher.track.get?app_id=web-desktop-app-v1.0" +
-                                  $"&usertoken={usertoken}&track_spotify_id=spotify:track:{spotifyTrackId}";
+                string url = $"{_apiBase}macro.subtitles.get?app_id=web-desktop-app-v1.0" +
+                             $"&usertoken={usertoken}&track_spotify_id=spotify:track:{spotifyTrackId}&format=json";
 
-                string matchResponse = await _httpClient.GetStringAsync(matchUrl);
-
-                int trackId = 0;
-                using (JsonDocument doc = JsonDocument.Parse(matchResponse))
-                {
-                    if (doc.RootElement.TryGetProperty("message", out JsonElement msg) &&
-                        msg.TryGetProperty("body", out JsonElement body) &&
-                        body.ValueKind == JsonValueKind.Object &&
-                        body.TryGetProperty("track", out JsonElement track))
-                    {
-                        trackId = track.GetProperty("track_id").GetInt32();
-                    }
-                }
-
-                if (trackId == 0) return null;
-
-                return await FetchMusixmatchSubtitleAsync(usertoken, trackId);
+                string response = await _httpClient.GetStringAsync(url);
+                return ExtractSubtitleFromMacroResponse(response);
             }
             catch { }
             return null;
@@ -157,55 +150,44 @@ namespace termlrc.Services
                 string cleanArtist = CleanQuery(artist);
                 string cleanTitle = CleanQuery(title);
 
-                string searchUrl = $"{_apiBase}track.search?app_id=web-desktop-app-v1.0" +
-                                   $"&usertoken={usertoken}&q_artist={Uri.EscapeDataString(cleanArtist)}&q_track={Uri.EscapeDataString(cleanTitle)}&f_has_lyrics=1";
+                string url = $"{_apiBase}macro.subtitles.get?app_id=web-desktop-app-v1.0" +
+                             $"&usertoken={usertoken}&q_artist={Uri.EscapeDataString(cleanArtist)}" +
+                             $"&q_track={Uri.EscapeDataString(cleanTitle)}&format=json";
 
-                var response = await _httpClient.GetAsync(searchUrl);
-                string searchResponse = await response.Content.ReadAsStringAsync();
-
-                int trackId = 0;
-                using (JsonDocument doc = JsonDocument.Parse(searchResponse))
-                {
-                    if (doc.RootElement.TryGetProperty("message", out JsonElement messageElement) &&
-                        messageElement.TryGetProperty("body", out JsonElement bodyElement) &&
-                        bodyElement.ValueKind == JsonValueKind.Object &&
-                        bodyElement.TryGetProperty("track_list", out JsonElement trackList))
-                    {
-                        if (trackList.GetArrayLength() > 0)
-                        {
-                            trackId = trackList[0].GetProperty("track").GetProperty("track_id").GetInt32();
-                        }
-                    }
-                }
-
-                if (trackId == 0) return null;
-
-                return await FetchMusixmatchSubtitleAsync(usertoken, trackId);
+                string response = await _httpClient.GetStringAsync(url);
+                return ExtractSubtitleFromMacroResponse(response);
             }
             catch { }
             return null;
         }
 
-        private async Task<string?> FetchMusixmatchSubtitleAsync(string usertoken, int trackId)
+        private string? ExtractSubtitleFromMacroResponse(string jsonResponse)
         {
             try
             {
-                string lyricsUrl = $"{_apiBase}track.subtitle.get?app_id=web-desktop-app-v1.0" +
-                                   $"&usertoken={usertoken}&track_id={trackId}&subtitle_format=lrc";
-
-                string lyricsResponse = await _httpClient.GetStringAsync(lyricsUrl);
-
-                using (JsonDocument doc = JsonDocument.Parse(lyricsResponse))
+                using (JsonDocument doc = JsonDocument.Parse(jsonResponse))
                 {
+                    // Navigate: message.body.macro_calls["track.subtitles.get"].message.body.subtitle_list[0].subtitle.subtitle_body
                     if (doc.RootElement.TryGetProperty("message", out JsonElement msg) &&
                         msg.TryGetProperty("body", out JsonElement body) &&
-                        body.ValueKind == JsonValueKind.Object &&
-                        body.TryGetProperty("subtitle", out JsonElement subtitle))
+                        body.TryGetProperty("macro_calls", out JsonElement macroCalls) &&
+                        macroCalls.TryGetProperty("track.subtitles.get", out JsonElement subtitlesGet) &&
+                        subtitlesGet.TryGetProperty("message", out JsonElement subMsg) &&
+                        subMsg.TryGetProperty("body", out JsonElement subBody) &&
+                        subBody.ValueKind == JsonValueKind.Object &&
+                        subBody.TryGetProperty("subtitle_list", out JsonElement subtitleList) &&
+                        subtitleList.GetArrayLength() > 0)
                     {
-                        string subtitleBody = subtitle.GetProperty("subtitle_body").GetString() ?? "";
-                        if (!string.IsNullOrEmpty(subtitleBody))
+                        var firstSubtitle = subtitleList[0];
+                        if (firstSubtitle.TryGetProperty("subtitle", out JsonElement subtitle) &&
+                            subtitle.TryGetProperty("subtitle_body", out JsonElement subtitleBodyEl))
                         {
-                            return ConvertMusixmatchJsonToLrc(subtitleBody);
+                            string subtitleBody = subtitleBodyEl.GetString() ?? "";
+                            if (!string.IsNullOrEmpty(subtitleBody))
+                            {
+                                // subtitle_body is already in LRC format from this endpoint
+                                return subtitleBody;
+                            }
                         }
                     }
                 }
@@ -283,35 +265,6 @@ namespace termlrc.Services
         {
             if (string.IsNullOrEmpty(query)) return query;
             return query.Trim();
-        }
-
-        private string ConvertMusixmatchJsonToLrc(string jsonSubtitle)
-        {
-            try
-            {
-                var lrcBuilder = new StringBuilder();
-                using (JsonDocument doc = JsonDocument.Parse(jsonSubtitle))
-                {
-                    foreach (var item in doc.RootElement.EnumerateArray())
-                    {
-                        if (item.TryGetProperty("text", out JsonElement textOpt) && item.TryGetProperty("time", out JsonElement timeOpt))
-                        {
-                            string text = textOpt.GetString() ?? "";
-                            double totalSeconds = timeOpt.GetProperty("total").GetDouble();
-
-                            TimeSpan t = TimeSpan.FromSeconds(totalSeconds);
-                            string timestamp = $"[{t.Minutes:D2}:{t.Seconds:D2}.{t.Milliseconds / 10:D2}]";
-
-                            lrcBuilder.AppendLine($"{timestamp}{text}");
-                        }
-                    }
-                }
-                return lrcBuilder.ToString();
-            }
-            catch
-            {
-                return jsonSubtitle;
-            }
         }
     }
 }
